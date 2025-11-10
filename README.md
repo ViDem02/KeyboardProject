@@ -58,9 +58,3 @@ Perfect for students, language learners, or anyone improving bilingual typing pr
 
 ---
 
-## 🚀 Getting Started
-
-### 1️⃣ Clone or Download
-```bash
-git clone https://github.com/yourusername/typing-trainer.git
-cd typing-trainer
