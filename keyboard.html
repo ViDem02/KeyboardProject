@@ -1,0 +1,303 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Typing Trainer - US International Keyboard</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<h1>Typing Trainer - US International Keyboard (French)</h1>
+
+<h3>Use the US keyboard, not the international one.</h3>
+
+<div id="statsBar">
+  <span id="timer">⏱ Time: 0.0s</span> |
+  <span id="liveWpm">📝 WPM: 0</span>
+</div>
+
+<div id="settings" style="text-align:center; margin-bottom:15px;">
+  <label>Red below: <input type="number" id="redThreshold" value="40" style="width:60px;"></label>
+  <label style="margin-left:10px;">Green above: <input type="number" id="greenThreshold" value="90" style="width:60px;"></label>
+  <label style="margin-left:15px;">
+    <input type="checkbox" id="disableBackspace"> Disable Backspace
+  </label>
+</div>
+
+
+
+
+<label for="textInput">Enter French text to practice:</label>
+<textarea id="textInput">Le matin, Théo se lève à six heures</textarea>
+<br>
+<button id="startBtn">Start Typing</button>
+<button id="restartBtn" disabled>Restart</button>
+<button id="exportBtn">Export Stats</button>
+<input type="file" id="importFile" style="display:none">
+<button id="importBtn">Import Stats</button>
+
+
+
+<h2>Typing Prompt:</h2>
+<div id="prompt"></div>
+
+<div id="results"></div>
+
+<h2>Practice History:</h2>
+<div id="history">No sessions yet.</div>
+
+<script>
+const textInput = document.getElementById('textInput');
+const startBtn = document.getElementById('startBtn');
+const restartBtn = document.getElementById('restartBtn');
+const exportBtn = document.getElementById('exportBtn');
+const importBtn = document.getElementById('importBtn');
+const importFile = document.getElementById('importFile');
+const promptDiv = document.getElementById('prompt');
+const resultsDiv = document.getElementById('results');
+const historyDiv = document.getElementById('history');
+const timerEl = document.getElementById('timer');
+const liveWpmEl = document.getElementById('liveWpm');
+
+let originalText = '';
+let targetText = '';
+let startTime = 0;
+let mistakes = 0;
+let typed = '';
+let history = [];
+let currentErrors = [];
+let timerInterval = null;
+
+const accentMap = {
+    'à': '`a', 'è': '`e', 'ù': '`u', 'ì': '`i', 'ò': '`o',
+    'á': "'a", 'é': "'e", 'í': "'i", 'ó': "'o", 'ú': "'u",
+    'â': '^a', 'ê': '^e', 'î': '^i', 'ô': '^o', 'û': '^u',
+    'ä': '"a', 'ë': '"e', 'ï': '"i', 'ö': '"o', 'ü': '"u',
+    'ç': ',c', 'ñ': '~n', 'ã': '~a', 'õ': '~o'
+};
+
+function convertToUSIntl(str) {
+    return str.split('').map(c => accentMap[c] || c).join('');
+}
+
+function startTyping() {
+    originalText = textInput.value.trim();
+    if (!originalText) {
+        alert('Please enter some text to practice!');
+        return;
+    }
+
+    targetText = convertToUSIntl(originalText);
+    typed = '';
+    mistakes = 0;
+    startTime = null;
+    currentErrors = [];
+
+    promptDiv.innerHTML = originalText.split('').map(c => `<span>${c}</span>`).join('');
+    resultsDiv.innerHTML = '';
+    textInput.disabled = true;
+    startBtn.disabled = true;
+    restartBtn.disabled = false;
+
+    // Reset live stats
+    timerEl.textContent = "⏱ Time: 0.0s";
+    liveWpmEl.textContent = "📝 WPM: 0";
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = null;
+
+    document.addEventListener('keydown', handleTyping);
+}
+
+function restartTyping() {
+    typed = '';
+    mistakes = 0;
+    startTime = null;
+    currentErrors = [];
+    promptDiv.innerHTML = originalText.split('').map(c => `<span>${c}</span>`).join('');
+    resultsDiv.innerHTML = '';
+    textInput.disabled = true;
+    startBtn.disabled = true;
+
+    if (timerInterval) clearInterval(timerInterval);
+    timerInterval = null;
+    timerEl.textContent = "⏱ Time: 0.0s";
+    liveWpmEl.textContent = "📝 WPM: 0";
+
+    document.addEventListener('keydown', handleTyping);
+}
+
+function handleTyping(e) {
+    if (!startTime) startTime = Date.now();
+    if (!timerInterval) timerInterval = setInterval(updateLiveStats, 200);
+
+    const disableBackspace = document.getElementById("disableBackspace")?.checked;
+
+    // Handle backspace
+    if (e.key === "Backspace") {
+        if (disableBackspace) {
+            e.preventDefault(); // Do nothing if disabled
+            return;
+        }
+        e.preventDefault();
+        typed = typed.slice(0, -1);
+        updatePrompt();
+        return;
+    }
+
+    // Ignore control keys (except accent keys)
+    if (e.key.length > 1 && !['`', "'", '^', '"', '~', ','].includes(e.key)) return;
+
+    // Handle accent dead keys (don't validate yet)
+    if (['`', "'", '^', '"', '~', ','].includes(e.key)) {
+        typed += e.key;
+        updatePrompt(true); // skip red marking for accent mode
+        return;
+    }
+
+    // Append typed char normally
+    typed += e.key;
+    updatePrompt();
+
+    // Check completion
+    if (typed.length >= targetText.length) {
+        const endTime = Date.now();
+        const timeMinutes = (endTime - startTime) / 60000;
+        const words = originalText.split(/\s+/).length;
+        const wpm = Math.round(words / timeMinutes);
+
+        clearInterval(timerInterval);
+        document.removeEventListener('keydown', handleTyping);
+
+        resultsDiv.innerHTML = `✅ Finished!<br>
+                                Words per minute: <b>${wpm}</b><br>
+                                Mistakes: <b>${mistakes}</b>`;
+        textInput.disabled = false;
+        startBtn.disabled = false;
+
+        history.push({
+            wpm,
+            mistakes,
+            text: originalText,
+            date: new Date().toLocaleString(),
+            errors: [...currentErrors],
+            backspaceDisabled: disableBackspace
+        });
+        updateHistory();
+    }
+}
+
+
+function updatePrompt(ignoreAccent = false) {
+    const spans = promptDiv.querySelectorAll('span');
+    mistakes = 0;
+    currentErrors = [];
+    let validationIndex = 0;
+
+    spans.forEach((span, i) => {
+        const originalChar = span.textContent;
+        const convertedChar = accentMap[originalChar] || originalChar;
+        const typedSlice = typed.slice(validationIndex, validationIndex + convertedChar.length);
+
+        // Skip marking errors if we're in accent mode
+        if (ignoreAccent) {
+            span.className = (typedSlice === convertedChar) ? 'correct' : '';
+        } else {
+            if (typedSlice === convertedChar) {
+                span.className = 'correct';
+            } else if (typedSlice.length > 0) {
+                span.className = 'incorrect';
+                mistakes++;
+                currentErrors.push({ position: i, expected: convertedChar, typed: typedSlice });
+            } else {
+                span.className = '';
+            }
+        }
+
+        validationIndex += convertedChar.length;
+    });
+}
+
+function updateLiveStats() {
+    if (!startTime) return;
+    const elapsed = (Date.now() - startTime) / 1000;
+    const minutes = elapsed / 60;
+    const wordsTyped = typed.split(/\s+/).filter(Boolean).length;
+    const wpm = minutes > 0 ? Math.round(wordsTyped / minutes) : 0;
+
+    timerEl.textContent = `⏱ Time: ${elapsed.toFixed(1)}s`;
+    liveWpmEl.textContent = `📝 WPM: ${wpm}`;
+
+    // Dynamic color between red → green
+    const redThreshold = parseInt(document.getElementById('redThreshold')?.value || 40);
+    const greenThreshold = parseInt(document.getElementById('greenThreshold')?.value || 90);
+
+    const clamped = Math.max(redThreshold, Math.min(wpm, greenThreshold));
+    const ratio = (clamped - redThreshold) / (greenThreshold - redThreshold);
+
+    // Linear gradient between red (255,0,0) and green (0,200,0)
+    const r = Math.round(255 * (1 - ratio));
+    const g = Math.round(200 * ratio);
+    const b = 0;
+
+    liveWpmEl.style.color = `rgb(${r}, ${g}, ${b})`;
+}
+
+
+function updateHistory() {
+    if (history.length === 0) {
+        historyDiv.innerHTML = 'No sessions yet.';
+        return;
+    }
+    historyDiv.innerHTML = history.map((h, i) => 
+        `<div>
+            <b>Session ${i+1}</b> (${h.date}): 
+            WPM = ${h.wpm}, Mistakes = ${h.mistakes}, 
+            Backspace: ${h.backspaceDisabled ? '🚫 Disabled' : '✅ Allowed'}<br>
+            Errors: ${h.errors.map(e => `'${e.typed}' → '${e.expected}' at pos ${e.position}`).join(', ')}
+        </div>`
+    ).join('');
+}
+
+
+exportBtn.addEventListener('click', () => {
+    const dataStr = JSON.stringify(history, null, 2);
+    const blob = new Blob([dataStr], { type: "application/json" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'typing_history.json';
+    a.click();
+    URL.revokeObjectURL(url);
+});
+
+importBtn.addEventListener('click', () => importFile.click());
+importFile.addEventListener('change', (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (event) => {
+        try {
+            const importedHistory = JSON.parse(event.target.result);
+            if (Array.isArray(importedHistory)) {
+                history = history.concat(importedHistory);
+                updateHistory();
+                alert('History imported successfully!');
+            } else {
+                alert('Invalid file format.');
+            }
+        } catch (err) {
+            alert('Error parsing file: ' + err);
+        }
+    };
+    reader.readAsText(file);
+    importFile.value = '';
+});
+
+startBtn.addEventListener('click', startTyping);
+restartBtn.addEventListener('click', restartTyping);
+
+</script>
+
+</body>
+</html>
